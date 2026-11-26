@@ -1,0 +1,46 @@
+# GitLab CI: build RPMs for Fedora and AlmaLinux (mirrors .github/workflows/rpm.yml).
+
+workflow:
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    # Avoid a duplicate branch pipeline when a merge request is open
+    - if: $CI_COMMIT_BRANCH && $CI_OPEN_MERGE_REQUESTS
+      when: never
+    - if: $CI_COMMIT_BRANCH
+    - if: $CI_COMMIT_TAG
+
+stages:
+  - build
+
+rpm:
+  stage: build
+  image: $IMAGE
+  parallel:
+    matrix:
+      - DIST: fedora43
+        IMAGE: registry.fedoraproject.org/fedora:43
+      - DIST: fedora44
+        IMAGE: registry.fedoraproject.org/fedora:44
+      - DIST: fedora45
+        IMAGE: registry.fedoraproject.org/fedora:45
+      - DIST: almalinux9
+        IMAGE: quay.io/almalinuxorg/almalinux:9
+      - DIST: almalinux10
+        IMAGE: quay.io/almalinuxorg/almalinux:10
+  variables:
+    # Full history: the RPM changelog is generated from it.
+    GIT_DEPTH: 0
+  before_script:
+    - dnf -y install git-core
+    - git config --global --add safe.directory "$CI_PROJECT_DIR"
+    - ./contrib/rpm/install-build-deps.sh
+  script:
+    - ./contrib/build-rpm.sh
+    - mkdir -p dist
+    - cp target/rpm/RPMS/*/*.rpm target/rpm/SRPMS/*.src.rpm dist/
+    - (cd dist && sha256sum *.rpm > SHA256SUMS-rpm.txt && cat SHA256SUMS-rpm.txt)
+  artifacts:
+    name: "cable-uhid-bridge-rpm-$DIST-$CI_COMMIT_REF_SLUG"
+    paths:
+      - dist/
+    expire_in: 1 week
